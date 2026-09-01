@@ -21,8 +21,7 @@ Conecte a pasta `data` como fonte e consolide os CSVs de histórico. A coluna
 ## Historico oficial no BigQuery
 
 Ao registrar uma ligacao, o CRM grava a interacao na tabela
-`BQ_PROJECT_ID.BQ_DATASET.historico_ligacoes_crm`. O arquivo
-`data/historico_ligacoes_backup.csv` e apenas uma copia local de seguranca.
+`BQ_PROJECT_ID.BQ_DATASET.historico_ligacoes_crm`; nao ha arquivo local de historico.
 
 Na primeira inicializacao, o CRM cria essa tabela automaticamente. A conta de
 servico precisa ter permissao para criar e inserir dados no dataset.

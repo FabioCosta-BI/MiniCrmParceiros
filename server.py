@@ -26,7 +26,6 @@ from google.cloud import bigquery
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
-INTERACOES_FILE = DATA_DIR / "historico_ligacoes_backup.csv"
 LOCK = threading.Lock()
 load_dotenv(BASE_DIR / ".env")
 BQ_PROJECT_ID = os.environ.get("BQ_PROJECT_ID", "")
@@ -43,12 +42,6 @@ CARTEIRA_COLUNAS = [
     "id_tarefa", "data_carteira", "consultor_responsavel", "uf", "id_wfm_b2b",
     "parceiro", "cidade", "telefone", "motivos", "prioridade", "detalhe_regra",
 ]
-INTERACAO_COLUNAS = [
-    "id_interacao", "data_hora", "id_tarefa", "data_carteira", "consultor", "uf", "id_wfm_b2b",
-    "parceiro", "cidade", "motivos", "resultado", "observacao", "proximo_retorno",
-]
-
-
 def bigquery_client() -> bigquery.Client:
     """Retorna uma conexão reutilizável e valida a configuração mínima."""
     global BQ_CLIENT
@@ -128,11 +121,6 @@ def seed_files() -> None:
             writer = csv.writer(file)
             writer.writerow(CARTEIRA_COLUNAS)
             writer.writerows(rows)
-    if not INTERACOES_FILE.exists():
-        with INTERACOES_FILE.open("w", newline="", encoding="utf-8-sig") as file:
-            csv.DictWriter(file, fieldnames=INTERACAO_COLUNAS).writeheader()
-
-
 def read_csv(path: Path) -> list[dict[str, str]]:
     with path.open("r", newline="", encoding="utf-8-sig") as file:
         return list(csv.DictReader(file))
@@ -211,10 +199,6 @@ class CRMHandler(SimpleHTTPRequestHandler):
             }
             with LOCK:
                 salvar_interacao_bigquery(row)
-                # BOM só é necessário na criação do arquivo. Em modo append ele poderia
-                # entrar no meio do CSV e quebrar a próxima leitura.
-                with INTERACOES_FILE.open("a", newline="", encoding="utf-8") as file:
-                    csv.DictWriter(file, fieldnames=INTERACAO_COLUNAS).writerow(row)
             self.send_json({"ok": True, "interacao": row}, HTTPStatus.CREATED)
         except (json.JSONDecodeError, ValueError, RuntimeError, GoogleAPICallError, TransportError) as error:
             self.send_json({"erro": str(error)}, HTTPStatus.BAD_REQUEST)

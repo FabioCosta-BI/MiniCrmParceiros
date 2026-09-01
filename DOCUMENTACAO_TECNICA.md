@@ -27,10 +27,9 @@ Power BI lê carteira e histórico
 ## Atualizacao: historico no BigQuery
 
 O CSV continua sendo usado para distribuir a carteira diaria. O registro de cada
-ligacao agora e salvo oficialmente em `historico_ligacoes_crm` no BigQuery; o
-arquivo `data/historico_ligacoes_backup.csv` e mantido apenas como contingencia
-local. Esta secao substitui as referencias posteriores que descrevem o CSV como
-historico oficial.
+ligacao agora e salvo oficialmente em `historico_ligacoes_crm` no BigQuery. Esta
+secao substitui as referencias posteriores que descrevem o CSV como historico
+oficial.
 
 Na primeira execucao, o CRM cria a tabela automaticamente, se a conta de servico
 tiver permissao de criar tabela no dataset. Ela precisa, no minimo, das permissoes
