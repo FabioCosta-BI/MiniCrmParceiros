@@ -1,155 +1,157 @@
-# Mini CRM de Parceiros Starlink — documentação para TI
+# Mini CRM de Parceiros Starlink - documentação técnica
 
-## Objetivo
+## Finalidade
 
-Disponibilizar uma aplicação web interna e leve para que consultores consultem a carteira de parceiros por UF e registrem o resultado dos contatos comerciais.
+Aplicação web interna usada pelos consultores para trabalhar uma carteira diária de
+parceiros Starlink. O consultor seleciona as UFs que irá atender, visualiza os
+dados do parceiro e registra o resultado da ligação.
 
-O sistema não exige banco de dados dedicado. A carteira diária e o histórico são armazenados em arquivos CSV, permitindo baixo consumo de recursos no servidor.
+Não há login nesta primeira versão. No registro, a pessoa informa qual consultor
+realizou o contato. Portanto, a autoria é declarada e não uma autenticação formal.
 
-## Fluxo da solução
-
-```text
-DW / BigQuery Starlink
-        ↓
-Rotina de geração da carteira diária
-        ↓
-CSV de carteira no servidor
-        ↓
-Consultor acessa o CRM pelo navegador
-        ↓
-Seleciona UF(s) e registra a ligação
-        ↓
-CSV de histórico atualizado
-        ↓
-Power BI lê carteira e histórico
-```
-
-## Atualizacao: historico no BigQuery
-
-O CSV continua sendo usado para distribuir a carteira diaria. O registro de cada
-ligacao agora e salvo oficialmente em `historico_ligacoes_crm` no BigQuery. Esta
-secao substitui as referencias posteriores que descrevem o CSV como historico
-oficial.
-
-Na primeira execucao, o CRM cria a tabela automaticamente, se a conta de servico
-tiver permissao de criar tabela no dataset. Ela precisa, no minimo, das permissoes
-de criar tabela e inserir/ler dados nessa tabela. O Power BI deve usar a tabela
-do BigQuery como fonte do historico de ligacoes.
-
-## Uso pelos consultores
-
-O consultor acessa a aplicação por um navegador, usando um endereço interno como:
+## Arquitetura
 
 ```text
-http://IP-DO-SERVIDOR:8787
+BigQuery / DW                         Servidor interno
+---------------                       -------------------------
+Dados Starlink -> carteira diária ->  arquivo CSV de carteira
+                                      Mini CRM (Python)
+                                      histórico de contatos -> BigQuery
+                                                            -> Power BI
 ```
 
-Na tela, ele:
 
-1. Seleciona uma ou mais UFs para trabalhar;
-2. Visualiza parceiro, telefone, ID WFM B2B, quantidade de vendas e motivos do contato;
-3. Registra a ação realizada;
-4. Escolhe quem fez o contato;
-5. Informa o resultado e uma observação opcional.
+## Funcionamento diário
 
-## Dados armazenados
+1. A rotina `atualizar_carteira_bigquery.py` gera um arquivo
+   `data/carteira_AAAA-MM-DD.csv`.
+2. O consultor abre o CRM, seleciona uma ou mais UFs e consulta a carteira.
+3. Após o contato, seleciona seu nome, o resultado e, se necessário, registra uma
+   observação.
+4. O CRM grava a interação na tabela `historico_ligacoes_crm` no BigQuery.
+5. Ao abrir a carteira novamente, o CRM consulta essa tabela para indicar o último
+   status registrado para cada tarefa.
 
-Arquivos principais dentro da pasta `data`:
+Uma carteira já criada para a mesma data não é substituída pela rotina de geração.
 
-| Arquivo | Conteúdo |
+## Regras da carteira
+
+Para cada UF, a seleção considera:
+
+- até 10 parceiros em cidade estratégica: cidades que acumulam 80% dos acessos
+  Starlink da UF, conforme a base ANATEL;
+- até 3 campeões de vendas: parceiros dentro dos 80% acumulados de vendas
+  Starlink/Vivensis da UF;
+- parceiros cuja cidade-sede faz aniversário na data, quando houver correspondência
+  com a base municipal carregada.
+
+O mesmo parceiro aparece uma vez, mesmo que se enquadre em mais de uma regra. Os
+motivos são exibidos juntos na carteira.
+
+## Dados gravados no BigQuery
+
+A tabela é criada com o nome abaixo, usando as variáveis do `.env`:
+
+```text
+BQ_PROJECT_ID.BQ_DATASET.historico_ligacoes_crm
+```
+
+Campos principais:
+
+| Campo | Uso |
 |---|---|
-| `carteira_AAAA-MM-DD.csv` | Parceiros selecionados para contato em cada dia, com UF, motivo e métricas de vendas. |
-| `historico_ligacoes.csv` | Histórico cumulativo: cada ligação registrada acrescenta uma nova linha. |
+| `id_interacao` | Identificador único do registro. |
+| `data_hora` | Data e hora do registro. |
+| `id_tarefa` | Identificador da tarefa da carteira diária. |
+| `data_carteira` | Data da carteira de origem. |
+| `consultor` | Pessoa que declarou o contato. |
+| `uf`, `cidade`, `parceiro`, `id_wfm_b2b` | Identificação do parceiro atendido. |
+| `motivos` | Motivo ou motivos que colocaram o parceiro na carteira. |
+| `resultado` | Resultado informado pelo consultor. |
+| `observacao` | Comentário opcional. |
 
-O histórico contém data/hora, identificador da tarefa, ID WFM B2B, UF, parceiro, pessoa que registrou o contato, resultado e observação.
-
-As cargas diárias não apagam o histórico. Isso permite análises históricas no Power BI.
-
-## Regras atuais da carteira
-
-Para cada UF, a rotina seleciona:
-
-- Até 10 parceiros em cidades estratégicas: cidades que acumulam 80% dos acessos Starlink da UF, conforme a base ANATEL;
-- Até 3 campeões de vendas: parceiros que estão dentro dos 80% acumulados de vendas da UF;
-- Quando um parceiro se enquadra em mais de uma regra, ele aparece uma única vez com todos os motivos aplicáveis.
-
-As regras de aniversário de parceiro e aniversário de cidade ainda não estão ativas, pois dependem de uma base de datas que não foi disponibilizada.
-
-## Fontes dos dados
-
-A geração da carteira utiliza os dados já existentes no DW/BigQuery Starlink:
-
-- `dim_instaladora`: parceiro, ID WFM B2B e telefones;
-- `fato_cobertura`: cidade e UF de atuação;
-- `fato_venda_starlink`: vendas por parceiro;
-- `Ranking de Cidades - Starlink.xlsx`: acessos Starlink/ANATEL por município.
-
-O recomendado é executar a atualização da carteira em uma máquina já autorizada a acessar o BigQuery e copiar o CSV gerado para o servidor do CRM. Assim, credenciais do BigQuery não precisam ficar no servidor web.
+O Power BI deve considerar o registro mais recente de cada `id_tarefa` para mostrar
+o status atual, mantendo todos os registros para análises históricas.
 
 ## Requisitos do servidor
 
-- Servidor Windows conectado à rede corporativa;
-- Python 3.12 instalado;
-- Pasta para hospedar a aplicação e seus arquivos de dados;
-- Porta TCP `8787` liberada apenas para rede interna e/ou VPN;
-- Backup diário da pasta `data`;
-- Inicialização automática da aplicação após reinicialização do servidor.
+- Windows com Python 3.12 ou superior;
+- acesso à rede corporativa e às fontes do BigQuery;
+- porta TCP 8787 liberada somente para a rede interna e/ou VPN;
+- proxy corporativo, quando existir, configurado para a conta ou serviço que
+  executa o CRM;
+- pasta da aplicação com permissão de leitura e execução para a conta do serviço.
 
-Para iniciar manualmente, dentro da pasta da aplicação:
+Para instalar as dependências:
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+Para iniciar manualmente:
 
 ```powershell
 py server.py
 ```
 
-Os consultores acessam então:
+O acesso é feito pelo navegador em um endereço como:
 
 ```text
 http://IP-DO-SERVIDOR:8787
 ```
 
+## Credenciais e permissões
+
+O arquivo `service-account.json` é a credencial usada para o BigQuery. Ele deve
+ficar apenas no servidor, com acesso restrito à conta que executa a aplicação.
+Nunca deve ser enviado ao GitHub, anexado em e-mail ou compartilhado por mensageria.
+
+O arquivo `.env` aponta para essa credencial e contém, no mínimo:
+
+```text
+BQ_PROJECT_ID=
+BQ_DATASET=
+GOOGLE_APPLICATION_CREDENTIALS=C:\caminho\service-account.json
+```
+
+A conta de serviço precisa ler e inserir dados em `historico_ligacoes_crm`. Caso a
+tabela seja criada automaticamente pelo CRM, ela também precisa criar tabelas no
+dataset. Para gerar a carteira, permanecem necessárias as permissões de leitura e
+consulta já usadas pelo processo Starlink.
+
 ## Segurança
 
-A versão atual não possui login. A pessoa escolhe seu nome ao registrar a ligação. Portanto, a autoria é declarada, não autenticada.
+- A aplicação não deve ser publicada diretamente na internet.
+- O firewall deve aceitar a porta 8787 apenas de redes corporativas e da VPN.
+- Recomenda-se executar o processo com uma conta de serviço Windows própria.
+- A pasta do projeto não deve conceder escrita aos consultores; eles registram
+  informações pela interface web.
+- O repositório GitHub deve ser privado e não deve conter CSVs de carteira, `.env`
+  ou `service-account.json`.
+- Para uso fora da VPN ou para auditoria de autoria, a próxima evolução deve ser
+  autenticação corporativa.
 
-Para o piloto interno:
+## Power BI
 
-- Não publicar a aplicação diretamente na internet;
-- Restringir o acesso à rede corporativa ou VPN;
-- Garantir que os consultores usem apenas a interface web, sem editar CSVs diretamente;
-- Restringir a escrita na pasta `data` à conta que executa a aplicação e a administradores;
-- Realizar backup diário da pasta `data`.
+O relatório deve combinar:
 
-Se for necessário controle formal de identidade no futuro, o sistema pode receber autenticação corporativa sem alterar sua lógica de carteira e histórico.
+- os CSVs de carteira diária, para entender quem foi selecionado e por qual regra;
+- a tabela `historico_ligacoes_crm`, para medir contatos, resultados e desempenho.
 
-## Integração com Power BI
+As chaves `id_tarefa` e `id_wfm_b2b` permitem relacionar as duas fontes. Indicadores
+esperados incluem contatos realizados, pendências, resultado das ligações,
+produtividade por consultor, UF e motivo de seleção.
 
-O Power BI deve ler os arquivos da pasta `data`:
-
-- A carteira diária indica quem foi selecionado, em qual UF e por qual regra;
-- O histórico mostra as ações e resultados dos contatos;
-- `id_tarefa` e `id_wfm_b2b` permitem relacionar histórico, parceiro e carteira.
-
-Indicadores possíveis:
-
-- Parceiros selecionados por UF e motivo;
-- Ligações realizadas por pessoa;
-- Contatos pendentes;
-- Distribuição dos resultados de contato;
-- Desempenho por UF, cidade estratégica e regra comercial.
-
-## Arquivos da aplicação
+## Arquivos do projeto
 
 ```text
 MiniCRMParceiros/
- ├─ server.py
- ├─ atualizar_carteira_bigquery.py
- ├─ index.html
- ├─ app.js
- ├─ arquivos .css
- ├─ data/
- │   ├─ carteira_AAAA-MM-DD.csv
- │   └─ historico_ligacoes.csv
- └─ Iniciar CRM.bat
+├─ server.py                         aplicação web e integração do histórico
+├─ atualizar_carteira_bigquery.py    geração da carteira diária
+├─ gerar_aniversarios_municipios_ibge.py
+├─ index.html, app.js e arquivos CSS interface web
+├─ requirements.txt                  dependências Python
+├─ .env.example                      modelo de configuração
+├─ data/                             carteiras diárias e base municipal
+└─ service-account.json              somente no servidor; ignorado pelo Git
 ```
-
-O arquivo mais crítico para backup é `data/historico_ligacoes.csv`.
