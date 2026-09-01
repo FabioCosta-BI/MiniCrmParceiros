@@ -1,9 +1,17 @@
-# Mini CRM de Parceiros — protótipo
+# Mini CRM de Parceiros
 
-Protótipo local sem banco de dados. A aplicação salva o histórico de cada ligação em
-`data/historico_ligacoes.csv`; a carteira do dia fica em `data/carteira_2026-08-31.csv`.
+Aplicacao web interna para os consultores consultarem a carteira de parceiros por
+UF e registrarem o resultado de cada ligacao.
 
-## Abrir
+## Onde os dados ficam
+
+- `data/carteira_AAAA-MM-DD.csv`: carteira diaria gerada para os consultores.
+- BigQuery, tabela `historico_ligacoes_crm`: historico oficial dos contatos.
+
+O CRM nao cria arquivo CSV de historico. O arquivo `.env` e o
+`service-account.json` sao privados e nunca devem ser enviados ao GitHub.
+
+## Abrir o CRM
 
 No Windows, dentro desta pasta, execute:
 
@@ -11,37 +19,40 @@ No Windows, dentro desta pasta, execute:
 py server.py
 ```
 
-Abra `http://localhost:8787` no navegador.
+Abra `http://localhost:8787` no navegador ou use o endereco interno do servidor.
 
-## Para o Power BI
+Na primeira utilizacao, a tabela de historico e criada no BigQuery, caso a conta
+de servico tenha permissao para criar, ler e inserir dados no dataset.
 
-Conecte a pasta `data` como fonte e consolide os CSVs de histórico. A coluna
-`id_tarefa` permite relacionar cada ligação à carteira, ao motivo e ao parceiro.
+## Atualizar a carteira diaria
 
-## Historico oficial no BigQuery
-
-Ao registrar uma ligacao, o CRM grava a interacao na tabela
-`BQ_PROJECT_ID.BQ_DATASET.historico_ligacoes_crm`; nao ha arquivo local de historico.
-
-Na primeira inicializacao, o CRM cria essa tabela automaticamente. A conta de
-servico precisa ter permissao para criar e inserir dados no dataset.
-
-No Power BI, use a tabela do BigQuery como fonte do historico de ligacoes.
-
-## Atualizar com BigQuery
-
-Para gerar uma carteira inicial com parceiros reais, execute:
+Para gerar a carteira com dados reais do BigQuery/Starlink:
 
 ```powershell
 py atualizar_carteira_bigquery.py
 ```
 
-Essa rotina consulta somente os parceiros com telefone e vendas Starlink, sem disparar
-e-mails. Nesta primeira versão ela cria até 10 contatos por consultor, por volume de
-vendas. Ela não substitui uma carteira já criada para o mesmo dia, protegendo os registros
-dos consultores. As regras de aniversário e de concentração por cidade serão acrescentadas depois.
+A rotina cria um novo CSV diario e nao substitui uma carteira ja existente para a
+mesma data. Assim, os registros dos consultores permanecem consistentes.
 
-## Próxima integração
+## Power BI
 
-O gerador da carteira diária deve substituir o CSV de exemplo por uma nova carteira
-com base no BigQuery/Starlink e manter os CSVs anteriores como histórico.
+Use duas fontes:
+
+- os CSVs de carteira da pasta `data`;
+- a tabela `historico_ligacoes_crm` no BigQuery.
+
+As colunas `id_tarefa` e `id_wfm_b2b` permitem relacionar a carteira, o parceiro,
+os motivos e o resultado de cada contato.
+
+## Dependencias
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+## Configuracao
+
+Copie `.env.example` como `.env` e preencha as credenciais do ambiente. No
+servidor, o caminho de `GOOGLE_APPLICATION_CREDENTIALS` deve apontar para o
+`service-account.json` mantido localmente e protegido.
