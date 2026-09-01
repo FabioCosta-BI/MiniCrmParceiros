@@ -1,0 +1,5 @@
+.env
+service-account.json
+data/*.csv
+!data/.gitkeep
+__pycache__/

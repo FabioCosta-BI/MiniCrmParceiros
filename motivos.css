@@ -1,0 +1,9 @@
+.reason { min-width: 260px; }
+.reason-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.reason-badge { display: inline-block; border-radius: 999px; padding: 5px 8px; font: 800 11px Inter, Segoe UI, Arial, sans-serif; white-space: nowrap; }
+.reason-badge.champion { color: #9a3412; background: #ffedd5; }
+.reason-badge.strategic { color: #075985; background: #e0f2fe; }
+.reason-badge.birthday { color: #6d28d9; background: #ede9fe; }
+.rule-detail { display: block; color: #607284; font-size: 11px; line-height: 1.35; margin-top: 7px; }
+.b2b-id { color: #36556d; font-family: Consolas, monospace; font-size: 12px; }
+.sales { color: #102f4a; font-weight: 800; text-align: center; }

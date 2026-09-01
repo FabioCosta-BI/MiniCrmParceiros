@@ -1,0 +1,7 @@
+.status-guide { margin: 0 25px 18px; border: 1px solid #dce5eb; border-radius: 9px; background: #f8fafb; color: #36556d; }
+.status-guide summary { padding: 11px 13px; cursor: pointer; font: 800 12px Inter, Segoe UI, Arial, sans-serif; }
+.status-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 0 13px 14px; }
+.status-list div { border-left: 3px solid #b9cbd5; padding-left: 8px; }
+.status-list strong { display: block; color: #102f4a; font: 800 11px Inter, Segoe UI, Arial, sans-serif; margin-bottom: 3px; }
+.status-list span { display: block; font-size: 11px; line-height: 1.35; }
+@media (max-width: 700px) { .status-guide { margin-left: 15px; margin-right: 15px; } .status-list { grid-template-columns: 1fr; } }

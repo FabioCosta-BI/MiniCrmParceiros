@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Conecta | Carteira de Parceiros</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="filter.css" />
+  <link rel="stylesheet" href="motivos.css" />
+  <link rel="stylesheet" href="status.css" />
+  <link rel="stylesheet" href="ufs.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div><p class="eyebrow">OPERAÇÃO STARLINK</p><h1>Carteira de parceiros</h1></div>
+      <div class="date"><span>Carteira do dia</span><strong>31 AGO 2026</strong></div>
+    </header>
+    <section id="start" class="start-card">
+      <div><p class="eyebrow">ANTES DE COMEÇAR</p><h2>Quais UFs você vai trabalhar?</h2><p>Selecione uma ou mais UFs para abrir a carteira correspondente.</p></div>
+      <div><div class="state-selection-actions"><button type="button" class="select-all-states" id="select-all-states">Selecionar todas</button><span id="selected-states-count">Nenhuma UF selecionada</span></div><div class="consultant-options state-options" id="state-options"></div><button class="primary start-work" id="start-work" disabled>Ver carteira selecionada</button></div>
+    </section>
+    <section id="workspace" hidden>
+      <div class="context-row"><div><p class="eyebrow">UFS SELECIONADAS</p><h2 id="consultant-name"></h2><p id="states"></p></div><button class="link-button" id="change-consultant">Alterar UFs</button></div>
+      <section class="metrics" id="metrics"></section>
+      <section class="table-card">
+        <div class="table-heading"><div><h2>Para ligar hoje</h2><p>Registre o resultado após cada contato. O histórico fica salvo automaticamente.</p></div><span id="count-label"></span></div>
+        <div class="filters" id="reason-filters"></div>
+        <details class="status-guide"><summary>Entenda os filtros da carteira</summary><div class="status-list"><div><strong>Todos</strong><span>Exibe todos os parceiros selecionados para contato no dia.</span></div><div><strong>Campeão de vendas</strong><span>Parceiros do grupo que concentra 80% das vendas; são priorizados até 3 contatos por dia.</span></div><div><strong>Cidade estratégica</strong><span>Parceiros em cidades que concentram 80% dos acessos Starlink da UF, segundo a base ANATEL; até 10 contatos por dia.</span></div><div><strong>Aniversário da cidade</strong><span>Parceiros cuja cidade-sede tem aniversário hoje, conforme a data histórica identificada no acervo do IBGE.</span></div></div></details>
+        <div class="table-wrap"><table><thead><tr><th>Parceiro</th><th>ID WFM B2B</th><th>Telefone</th><th>Vendas</th><th>Motivo</th><th>Prioridade</th><th>Status</th><th></th></tr></thead><tbody id="tasks"></tbody></table></div>
+      </section>
+    </section>
+  </main>
+  <dialog id="interaction-dialog"><form id="interaction-form"><div class="modal-head"><div><p class="eyebrow">REGISTRAR LIGAÇÃO</p><h2 id="modal-partner"></h2><p id="modal-subtitle"></p></div><button type="button" class="close" id="close-dialog" aria-label="Fechar">×</button></div><label>Quem realizou o contato?<select id="contact-consultant" required><option value="">Selecione</option><option>Vitor</option><option>Edilaine</option><option>Lucas</option></select></label><label>Resultado<select id="result" required><option value="">Selecione</option><option>Não atendeu</option><option>Sem interesse</option><option>Interessado</option><option>Número inválido</option></select></label><label>Observação<textarea id="note" rows="4" placeholder="Inclua um contexto útil sobre o contato"></textarea></label><div class="modal-actions"><button type="button" class="secondary" id="cancel-dialog">Cancelar</button><button class="primary" type="submit">Salvar registro</button></div><p class="form-error" id="form-error"></p></form></dialog>
+  <script src="app.js"></script>
+</body>
+</html>
