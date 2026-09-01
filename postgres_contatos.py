@@ -1,28 +1,28 @@
-"""Acesso ao PostgreSQL da TI para atendimentos e controle de tentativas."""
+"""Acesso ao PostgreSQL da TI: carteira, histórico e controle de tentativas."""
 from __future__ import annotations
 
 import os
 from datetime import date, datetime, timedelta
-from uuid import UUID
+from uuid import uuid4
 
 import psycopg
 from psycopg.rows import dict_row
 
 
 def configuracao() -> dict[str, str]:
-    campos = ("PG_HOST", "PG_DATABASE", "PG_USER", "PG_PASSWORD")
+    campos = ("CRM_PG_HOST", "CRM_PG_DATABASE", "CRM_PG_USER", "CRM_PG_PASSWORD")
     faltando = [campo for campo in campos if not os.getenv(campo)]
     if faltando:
-        raise RuntimeError(f"PostgreSQL não configurado: {', '.join(faltando)}")
+        raise RuntimeError(f"PostgreSQL da TI não configurado: {', '.join(faltando)}")
     return {
-        "host": os.environ["PG_HOST"], "port": os.getenv("PG_PORT", "5432"),
-        "dbname": os.environ["PG_DATABASE"], "user": os.environ["PG_USER"],
-        "password": os.environ["PG_PASSWORD"],
+        "host": os.environ["CRM_PG_HOST"], "port": os.getenv("CRM_PG_PORT", "5432"),
+        "dbname": os.environ["CRM_PG_DATABASE"], "user": os.environ["CRM_PG_USER"],
+        "password": os.environ["CRM_PG_PASSWORD"],
     }
 
 
 def schema() -> str:
-    return os.getenv("PG_SCHEMA", "starlink_crm")
+    return os.getenv("CRM_PG_SCHEMA", "starlink_crm")
 
 
 def conexao():
@@ -34,8 +34,7 @@ def competencia(data: date) -> date:
 
 
 def segundo_dia_util(data: date) -> date:
-    proxima = data
-    uteis = 0
+    proxima, uteis = data, 0
     while uteis < 2:
         proxima += timedelta(days=1)
         if proxima.weekday() < 5:
@@ -44,21 +43,29 @@ def segundo_dia_util(data: date) -> date:
 
 
 def controles(ids: list[str], hoje: date) -> dict[str, dict]:
+    """Controle do mês e bloqueios persistentes por número inválido."""
     if not ids:
         return {}
     comando = f"""
         SELECT * FROM {schema()}.controle_contatos
-        WHERE competencia = %s AND id_wfm_b2b = ANY(%s)
+        WHERE id_wfm_b2b = ANY(%s)
+          AND (competencia = %s OR (status = 'bloqueado' AND ultimo_resultado = 'Número inválido'))
+        ORDER BY competencia DESC
     """
     with conexao() as conn, conn.cursor() as cur:
-        cur.execute(comando, (competencia(hoje), ids))
-        return {linha["id_wfm_b2b"]: linha for linha in cur.fetchall()}
+        cur.execute(comando, (ids, competencia(hoje)))
+        resultado: dict[str, dict] = {}
+        for linha in cur.fetchall():
+            resultado.setdefault(linha["id_wfm_b2b"], linha)
+        return resultado
 
 
 def elegivel(controle: dict | None, hoje: date) -> bool:
     if not controle:
         return True
     if controle["status"] in {"concluido", "bloqueado"}:
+        return False
+    if controle.get("data_ultima_oferta") == hoje:
         return False
     proxima = controle["data_proxima_tentativa"]
     return bool(proxima and proxima <= hoje and controle["tentativas_no_mes"] < 3)
@@ -79,7 +86,48 @@ def registrar_oferta(itens: list[dict], hoje: date) -> None:
             atualizado_em = CURRENT_TIMESTAMP
     """
     with conexao() as conn, conn.cursor() as cur:
-        cur.executemany(comando, [(x["id_wfm_b2b"], competencia(hoje), hoje, segundo_dia_util(hoje)) for x in itens])
+        cur.executemany(comando, [
+            (item["id_wfm_b2b"], competencia(hoje), hoje, segundo_dia_util(hoje)) for item in itens
+        ])
+
+
+def substituir_carteira(itens: list[dict], hoje: date) -> None:
+    excluir = f"DELETE FROM {schema()}.carteira_diaria WHERE data_carteira = %s"
+    inserir = f"""
+        INSERT INTO {schema()}.carteira_diaria
+        (id_tarefa, data_carteira, bloco_uf, uf, id_wfm_b2b, parceiro, cidade, cod_ibge,
+         telefone, vendas_starlink, motivos, prioridade, detalhe_regra)
+        VALUES (%(id_tarefa)s, %(data_carteira)s, %(bloco_uf)s, %(uf)s, %(id_wfm_b2b)s,
+                %(parceiro)s, %(cidade)s, %(cod_ibge)s, %(telefone)s, %(vendas_starlink)s,
+                %(motivos)s, %(prioridade)s, %(detalhe_regra)s)
+    """
+    with conexao() as conn, conn.cursor() as cur:
+        cur.execute(excluir, (hoje,))
+        if itens:
+            cur.executemany(inserir, itens)
+
+
+def existe_carteira(hoje: date) -> bool:
+    with conexao() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT EXISTS (SELECT 1 FROM {schema()}.carteira_diaria WHERE data_carteira = %s) AS existe", (hoje,))
+        return bool(cur.fetchone()["existe"])
+
+
+def carteira_do_dia(ufs: list[str], hoje: date) -> list[dict]:
+    comando = f"""
+        SELECT * FROM {schema()}.carteira_diaria
+        WHERE data_carteira = %s AND uf = ANY(%s)
+        ORDER BY bloco_uf, prioridade DESC, vendas_starlink DESC, parceiro
+    """
+    with conexao() as conn, conn.cursor() as cur:
+        cur.execute(comando, (hoje, ufs))
+        return cur.fetchall()
+
+
+def tarefa(id_tarefa: str) -> dict | None:
+    with conexao() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT * FROM {schema()}.carteira_diaria WHERE id_tarefa = %s", (id_tarefa,))
+        return cur.fetchone()
 
 
 def ultimos_status(ids_tarefa: list[str]) -> dict[str, dict]:
@@ -99,23 +147,31 @@ def ultimos_status(ids_tarefa: list[str]) -> dict[str, dict]:
 def registrar_atendimento(item: dict, payload: dict) -> None:
     agora = datetime.now().astimezone()
     resultado = payload["resultado"]
-    contato_realizado = resultado != "Não atendeu"
-    comando_atendimento = f"""
+    contato_realizado = resultado not in {"Não atendeu", "Número inválido"}
+    numero_invalido = resultado == "Número inválido"
+    atendimento = f"""
         INSERT INTO {schema()}.atendimentos_parceiros
         (id_atendimento, data_hora, id_tarefa, data_carteira, consultor, id_wfm_b2b,
          parceiro, uf, cidade, motivos, resultado, observacao)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
-    comando_controle = f"""
+    controle = f"""
         UPDATE {schema()}.controle_contatos SET
             tentativas_no_mes = CASE WHEN %s THEN 3 ELSE LEAST(tentativas_no_mes + 1, 3) END,
             data_ultima_tentativa = %s,
-            data_proxima_tentativa = CASE WHEN %s THEN NULL WHEN tentativas_no_mes + 1 >= 3 THEN NULL ELSE %s END,
-            status = CASE WHEN %s THEN 'concluido' WHEN tentativas_no_mes + 1 >= 3 THEN 'bloqueado' ELSE 'aguardando_tentativa' END,
+            data_proxima_tentativa = CASE WHEN %s OR %s THEN NULL WHEN tentativas_no_mes + 1 >= 3 THEN NULL ELSE %s END,
+            status = CASE WHEN %s THEN 'concluido' WHEN %s OR tentativas_no_mes + 1 >= 3 THEN 'bloqueado' ELSE 'aguardando_tentativa' END,
             ultimo_resultado = %s, atualizado_em = CURRENT_TIMESTAMP
         WHERE id_wfm_b2b = %s AND competencia = %s
     """
-    from uuid import uuid4
     with conexao() as conn, conn.cursor() as cur:
-        cur.execute(comando_atendimento, (uuid4(), agora, item["id_tarefa"], item["data_carteira"], payload["consultor"], item["id_wfm_b2b"], item["parceiro"], item["uf"], item["cidade"], item["motivos"], resultado, payload.get("observacao", "")))
-        cur.execute(comando_controle, (contato_realizado, agora, contato_realizado, segundo_dia_util(agora.date()), contato_realizado, resultado, item["id_wfm_b2b"], competencia(agora.date())))
+        cur.execute(atendimento, (
+            uuid4(), agora, item["id_tarefa"], item["data_carteira"], payload["consultor"],
+            item["id_wfm_b2b"], item["parceiro"], item["uf"], item["cidade"], item["motivos"],
+            resultado, payload.get("observacao", ""),
+        ))
+        cur.execute(controle, (
+            contato_realizado, agora, contato_realizado, numero_invalido,
+            segundo_dia_util(agora.date()), contato_realizado, numero_invalido, resultado,
+            item["id_wfm_b2b"], competencia(item["data_carteira"]),
+        ))

@@ -1,5 +1,7 @@
 .env
 service-account.json
 data/*.csv
+data/*.xlsx
 !data/.gitkeep
 __pycache__/
+.venv/

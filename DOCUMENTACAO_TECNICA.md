@@ -1,157 +1,78 @@
-# Mini CRM de Parceiros Starlink - documentação técnica
+# Mini CRM de Parceiros Starlink — documentação técnica
 
-## Finalidade
+## Objetivo
 
-Aplicação web interna usada pelos consultores para trabalhar uma carteira diária de
-parceiros Starlink. O consultor seleciona as UFs que irá atender, visualiza os
-dados do parceiro e registra o resultado da ligação.
-
-Não há login nesta primeira versão. No registro, a pessoa informa qual consultor
-realizou o contato. Portanto, a autoria é declarada e não uma autenticação formal.
+Aplicação web interna para os consultores abrirem a carteira do dia por UF e registrarem o resultado de cada ligação. Não há autenticação nesta primeira versão: o consultor informa seu nome ao registrar a interação.
 
 ## Arquitetura
 
 ```text
-BigQuery / DW                         Servidor interno
----------------                       -------------------------
-Dados Starlink -> carteira diária ->  arquivo CSV de carteira
-                                      Mini CRM (Python)
-                                      histórico de contatos -> BigQuery
-                                                            -> Power BI
+Pegasus B2B (leitura) ──┐
+Planilha ANATEL local ──┼─> rotina diária ─> PostgreSQL da TI ─> Mini CRM / Power BI
+CSV aniversários local ─┘                         │
+                                                   ├─ carteira_diaria
+                                                   ├─ controle_contatos
+                                                   └─ atendimentos_parceiros
 ```
 
+O projeto não consulta BigQuery e não persiste carteira ou atendimentos em CSV. Os dois arquivos locais são apenas referências de negócio, copiados manualmente para o servidor.
 
-## Funcionamento diário
+## Origem dos dados
 
-1. A rotina `atualizar_carteira_bigquery.py` gera um arquivo
-   `data/carteira_AAAA-MM-DD.csv`.
-2. O consultor abre o CRM, seleciona uma ou mais UFs e consulta a carteira.
-3. Após o contato, seleciona seu nome, o resultado e, se necessário, registra uma
-   observação.
-4. O CRM grava a interação na tabela `historico_ligacoes_crm` no BigQuery.
-5. Ao abrir a carteira novamente, o CRM consulta essa tabela para indicar o último
-   status registrado para cada tarefa.
+| Informação | Origem | Forma de acesso |
+|---|---|---|
+| Parceiro, cidade-sede e telefones | Pegasus: `tb023_gcinstaladoras`, `tb024_gccontatos`, `tb_cidades` | PostgreSQL, somente leitura |
+| Vendas Starlink | Pegasus: `vw_cp_vendas_starlink` | ODBC, somente leitura |
+| Cidades estratégicas | `Ranking de Cidades - Starlink.xlsx` | Arquivo local no servidor |
+| Aniversário municipal | `aniversarios_municipios_ibge.csv` | Arquivo local no servidor |
+| Carteira e interações | Banco PostgreSQL indicado pela TI | Leitura e escrita no schema do CRM |
 
-Uma carteira já criada para a mesma data não é substituída pela rotina de geração.
+As consultas do Pegasus replicam os filtros Starlink já usados no DW: pessoa jurídica, operação contendo `STARLINK` e exclusão do cadastro de teste de CNPJ `123`. Nenhuma tabela do Pegasus é criada ou alterada.
 
-## Regras da carteira
+## Rotina diária
 
-Para cada UF, a seleção considera:
+O comando `python3 atualizar_carteira_pegasus.py` consulta as fontes e seleciona, em cada um dos três blocos de UFs, sem repetir parceiro:
 
-- até 10 parceiros em cidade estratégica: parceiros cuja cidade compõe os
-  primeiros 80% acumulados de acessos Starlink da UF, conforme a base ANATEL;
-- até 3 campeões de vendas: parceiros dentro dos 80% acumulados de vendas
-  Starlink/Vivensis da UF;
-- parceiros cuja cidade-sede faz aniversário na data, quando houver correspondência
-  com a base municipal carregada.
+- 6 parceiros em destaque de vendas;
+- 24 parceiros cuja cidade está nos primeiros 80% acumulados de acessos Starlink da UF, segundo ANATEL;
+- até 5 aniversariantes de cidade como extras, em ordem de vendas.
 
-O mesmo parceiro aparece uma vez, mesmo que se enquadre em mais de uma regra. Os
-motivos são exibidos juntos na carteira.
+Antes da seleção, a rotina consulta `controle_contatos`:
 
-## Dados gravados no BigQuery
+- parceiro ofertado hoje não é incluído novamente no mesmo dia nem no dia seguinte;
+- `Não atendeu` pode retornar no segundo dia útil posterior;
+- o limite é de três tentativas por mês;
+- contato efetivo e terceira tentativa bloqueiam o parceiro até a próxima competência;
+- `Número inválido` fica bloqueado até que o cadastro seja corrigido.
 
-A tabela é criada com o nome abaixo, usando as variáveis do `.env`:
+A rotina substitui somente a carteira da data executada e, em seguida, registra a oferta no controle de contatos. Ela deve ser agendada uma vez por dia antes do início dos atendimentos.
 
-```text
-BQ_PROJECT_ID.BQ_DATASET.historico_ligacoes_crm
-```
+## Tabelas PostgreSQL
 
-Campos principais:
+O arquivo [sql/postgresql_crm.sql](sql/postgresql_crm.sql) deve ser executado pela TI uma única vez, no banco e no schema destinados ao CRM.
 
-| Campo | Uso |
+| Tabela | Conteúdo |
 |---|---|
-| `id_interacao` | Identificador único do registro. |
-| `data_hora` | Data e hora do registro. |
-| `id_tarefa` | Identificador da tarefa da carteira diária. |
-| `data_carteira` | Data da carteira de origem. |
-| `consultor` | Pessoa que declarou o contato. |
-| `uf`, `cidade`, `parceiro`, `id_wfm_b2b` | Identificação do parceiro atendido. |
-| `motivos` | Motivo ou motivos que colocaram o parceiro na carteira. |
-| `resultado` | Resultado informado pelo consultor. |
-| `observacao` | Comentário opcional. |
+| `carteira_diaria` | Lista gerada por data, UF, parceiro, motivo, telefone e vendas. |
+| `controle_contatos` | Tentativas, resultado mais recente, próxima tentativa e bloqueio. |
+| `atendimentos_parceiros` | Histórico imutável de todas as interações informadas pelos consultores. |
 
-O Power BI deve considerar o registro mais recente de cada `id_tarefa` para mostrar
-o status atual, mantendo todos os registros para análises históricas.
+## Configuração
 
-## Requisitos do servidor
+Criar o arquivo `.env` a partir de `.env.example`. Ele contém duas conexões distintas: `PEGASUS_*` é apenas leitura na origem; `CRM_PG_*` aponta para o banco da TI que receberá os dados do CRM. Não compartilhar nem versionar esse arquivo.
 
-- Windows com Python 3.12 ou superior;
-- acesso à rede corporativa e às fontes do BigQuery;
-- porta TCP 8787 liberada somente para a rede interna e/ou VPN;
-- proxy corporativo, quando existir, configurado para a conta ou serviço que
-  executa o CRM;
-- pasta da aplicação com permissão de leitura e execução para a conta do serviço.
+No Linux, a TI também precisa instalar e configurar o driver ODBC e o DSN informado em `PEGASUS_ODBC_DSN`, pois a view de vendas é acessada por ODBC. Caso exista uma view equivalente acessível diretamente por PostgreSQL, o conector pode ser simplificado depois.
 
-Para instalar as dependências:
-
-```powershell
-py -m pip install -r requirements.txt
-```
-
-Para iniciar manualmente:
-
-```powershell
-py server.py
-```
-
-O acesso é feito pelo navegador em um endereço como:
+Os arquivos abaixo devem existir no servidor e ficar fora do Git:
 
 ```text
-http://IP-DO-SERVIDOR:8787
+data/aniversarios_municipios_ibge.csv
+data/Ranking de Cidades - Starlink.xlsx
 ```
 
-## Credenciais e permissões
+## Operação e segurança
 
-O arquivo `service-account.json` é a credencial usada para o BigQuery. Ele deve
-ficar apenas no servidor, com acesso restrito à conta que executa a aplicação.
-Nunca deve ser enviado ao GitHub, anexado em e-mail ou compartilhado por mensageria.
-
-O arquivo `.env` aponta para essa credencial e contém, no mínimo:
-
-```text
-BQ_PROJECT_ID=
-BQ_DATASET=
-GOOGLE_APPLICATION_CREDENTIALS=C:\caminho\service-account.json
-```
-
-A conta de serviço precisa ler e inserir dados em `historico_ligacoes_crm`. Caso a
-tabela seja criada automaticamente pelo CRM, ela também precisa criar tabelas no
-dataset. Para gerar a carteira, permanecem necessárias as permissões de leitura e
-consulta já usadas pelo processo Starlink.
-
-## Segurança
-
-- A aplicação não deve ser publicada diretamente na internet.
-- O firewall deve aceitar a porta 8787 apenas de redes corporativas e da VPN.
-- Recomenda-se executar o processo com uma conta de serviço Windows própria.
-- A pasta do projeto não deve conceder escrita aos consultores; eles registram
-  informações pela interface web.
-- O repositório GitHub deve ser privado e não deve conter CSVs de carteira, `.env`
-  ou `service-account.json`.
-- Para uso fora da VPN ou para auditoria de autoria, a próxima evolução deve ser
-  autenticação corporativa.
-
-## Power BI
-
-O relatório deve combinar:
-
-- os CSVs de carteira diária, para entender quem foi selecionado e por qual regra;
-- a tabela `historico_ligacoes_crm`, para medir contatos, resultados e desempenho.
-
-As chaves `id_tarefa` e `id_wfm_b2b` permitem relacionar as duas fontes. Indicadores
-esperados incluem contatos realizados, pendências, resultado das ligações,
-produtividade por consultor, UF e motivo de seleção.
-
-## Arquivos do projeto
-
-```text
-MiniCRMParceiros/
-├─ server.py                         aplicação web e integração do histórico
-├─ atualizar_carteira_bigquery.py    geração da carteira diária
-├─ gerar_aniversarios_municipios_ibge.py
-├─ index.html, app.js e arquivos CSS interface web
-├─ requirements.txt                  dependências Python
-├─ .env.example                      modelo de configuração
-├─ data/                             carteiras diárias e base municipal
-└─ service-account.json              somente no servidor; ignorado pelo Git
-```
+- Executar o serviço com conta técnica própria, com leitura no Pegasus e somente as permissões necessárias no schema `starlink_crm`.
+- Liberar a porta TCP 8787 apenas para a rede corporativa e para clientes conectados pela VPN; não publicar a aplicação na internet.
+- A pasta do projeto não deve permitir escrita para os consultores.
+- O Power BI consulta `carteira_diaria`, `atendimentos_parceiros` e `controle_contatos` diretamente no PostgreSQL da TI, preferencialmente com usuário somente leitura.

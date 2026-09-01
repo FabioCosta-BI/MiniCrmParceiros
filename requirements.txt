@@ -1,3 +1,5 @@
-google-cloud-bigquery
 python-dotenv
 psycopg[binary]
+pyodbc
+pandas
+openpyxl

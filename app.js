@@ -1,5 +1,5 @@
 let config = null;
-let currentStates = [];
+let currentGroups = [];
 let currentTask = null;
 let activeReason = 'Todos';
 
@@ -19,32 +19,36 @@ function formatPortfolioDate(value) {
 }
 
 function renderStates() {
-  el('state-options').innerHTML = config.ufs.map(uf => `<button class="${currentStates.includes(uf) ? 'selected' : ''}" data-state="${uf}"><span>${uf}</span></button>`).join('');
-  const allSelected = currentStates.length === config.ufs.length;
-  el('select-all-states').textContent = allSelected ? 'Limpar seleção' : 'Selecionar todas';
-  el('selected-states-count').textContent = currentStates.length === 0
-    ? 'Nenhuma UF selecionada'
-    : `${currentStates.length} ${currentStates.length === 1 ? 'UF selecionada' : 'UFs selecionadas'}`;
-  document.querySelectorAll('[data-state]').forEach(button => button.onclick = () => {
-    const uf = button.dataset.state;
-    currentStates = currentStates.includes(uf) ? currentStates.filter(item => item !== uf) : [...currentStates, uf];
-    el('start-work').disabled = currentStates.length === 0;
+  const grupos = Object.entries(config.grupos_uf);
+  el('state-options').innerHTML = grupos.map(([nome, ufs]) => `<button class="${currentGroups.includes(nome) ? 'selected' : ''}" data-group="${escapeHtml(nome)}"><strong>${escapeHtml(nome)}</strong><span>${ufs.length} UFs</span></button>`).join('');
+  const allSelected = currentGroups.length === grupos.length;
+  const ufsSelecionadas = currentGroups.flatMap(nome => config.grupos_uf[nome]);
+  el('select-all-states').textContent = allSelected ? 'Limpar seleção' : 'Selecionar todos';
+  el('selected-states-count').textContent = currentGroups.length === 0
+    ? 'Nenhum grupo selecionado'
+    : `${currentGroups.length} ${currentGroups.length === 1 ? 'grupo' : 'grupos'} · ${ufsSelecionadas.length} UFs`;
+  document.querySelectorAll('[data-group]').forEach(button => button.onclick = () => {
+    const grupo = button.dataset.group;
+    currentGroups = currentGroups.includes(grupo) ? currentGroups.filter(item => item !== grupo) : [...currentGroups, grupo];
+    el('start-work').disabled = currentGroups.length === 0;
     renderStates();
   });
 }
 
 async function beginWork() {
   el('start').hidden = true; el('workspace').hidden = false;
-  el('consultant-name').textContent = currentStates.join(' · ');
-  el('states').textContent = `${currentStates.length} ${currentStates.length === 1 ? 'UF selecionada' : 'UFs selecionadas'}`;
+  const ufsSelecionadas = currentGroups.flatMap(nome => config.grupos_uf[nome]);
+  el('consultant-name').textContent = currentGroups.join(' · ');
+  el('states').textContent = `${ufsSelecionadas.length} UFs: ${ufsSelecionadas.join(' · ')}`;
   await loadTasks();
 }
 
 async function loadTasks() {
-  const response = await fetch(`/api/carteira?ufs=${encodeURIComponent(currentStates.join(','))}`);
+  const ufsSelecionadas = currentGroups.flatMap(nome => config.grupos_uf[nome]);
+  const response = await fetch(`/api/carteira?ufs=${encodeURIComponent(ufsSelecionadas.join(','))}`);
   const data = await response.json();
   const tasks = data.tarefas || [];
-  const reasons = ['Todos', 'Campeão de vendas', 'Cidade estratégica', 'Aniversário da cidade'];
+  const reasons = ['Todos', 'Parceiro em destaque de vendas', 'Cidade estratégica', 'Aniversário da cidade', 'Aniversário do parceiro'];
   el('reason-filters').innerHTML = reasons.map(reason => `<button class="filter ${reason === activeReason ? 'active' : ''}" data-reason="${reason}">${reason}</button>`).join('');
   document.querySelectorAll('[data-reason]').forEach(button => button.onclick = () => { activeReason = button.dataset.reason; loadTasks(); });
   const shownTasks = activeReason === 'Todos' ? tasks : tasks.filter(task => task.motivos.includes(activeReason));
@@ -56,22 +60,30 @@ async function loadTasks() {
     const completed = task.status !== 'Pendente';
     const badges = task.motivos.split(';').map(reason => {
       const clean = reason.trim();
-      const kind = clean === 'Campeão de vendas' ? 'champion' : clean === 'Cidade estratégica' ? 'strategic' : 'birthday';
+      const kind = clean === 'Parceiro em destaque de vendas' ? 'champion' : clean === 'Cidade estratégica' ? 'strategic' : 'birthday';
       return `<span class="reason-badge ${kind}">${escapeHtml(clean)}</span>`;
     }).join('');
-    return `<tr><td class="partner">${escapeHtml(task.parceiro)}<small>${escapeHtml(task.cidade)} · ${escapeHtml(task.uf)}</small></td><td class="b2b-id">${escapeHtml(task.id_wfm_b2b)}</td><td>${escapeHtml(task.telefone)}</td><td class="sales">${escapeHtml(task.vendas_starlink)}</td><td class="reason"><div class="reason-badges">${badges}</div><small class="rule-detail">${escapeHtml(task.detalhe_regra)}</small></td><td><span class="priority ${task.prioridade === 'Alta' ? 'high' : 'normal'}">${escapeHtml(task.prioridade)}</span></td><td><span class="tag ${completed ? 'done' : 'pending'}">${escapeHtml(task.status)}</span></td><td><button class="register" data-task="${escapeHtml(task.id_tarefa)}">${completed ? 'Novo registro' : 'Registrar'}</button></td></tr>`;
+    const whatsapp = whatsappLink(task.telefone);
+    const telefone = whatsapp ? `<a class="whatsapp-link" href="${whatsapp}" target="_blank" rel="noopener noreferrer" title="Abrir conversa no WhatsApp">${escapeHtml(task.telefone)}</a>` : escapeHtml(task.telefone);
+    return `<tr><td class="partner">${escapeHtml(task.parceiro)}<small>${escapeHtml(task.cidade)} · ${escapeHtml(task.uf)}</small></td><td class="b2b-id">${escapeHtml(task.id_wfm_b2b)}</td><td>${telefone}</td><td class="sales">${escapeHtml(task.vendas_starlink)}</td><td class="reason"><div class="reason-badges">${badges}</div><small class="rule-detail">${escapeHtml(task.detalhe_regra)}</small></td><td><span class="priority ${task.prioridade === 'Alta' ? 'high' : 'normal'}">${escapeHtml(task.prioridade)}</span></td><td><span class="tag ${completed ? 'done' : 'pending'}">${escapeHtml(task.status)}</span></td><td><button class="register" data-task="${escapeHtml(task.id_tarefa)}">${completed ? 'Novo registro' : 'Registrar'}</button></td></tr>`;
   }).join('');
   document.querySelectorAll('[data-task]').forEach(button => button.onclick = () => openDialog(tasks.find(t => t.id_tarefa === button.dataset.task)));
 }
 
 function metric(value, label) { return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`; }
+function whatsappLink(phone) {
+  let digits = String(phone || '').replace(/\D/g, '');
+  if (digits.startsWith('55') && [12, 13].includes(digits.length)) digits = digits.slice(2);
+  return digits.length >= 10 ? `https://wa.me/55${digits}` : '';
+}
 function openDialog(task) { currentTask = task; el('modal-partner').textContent = task.parceiro; el('modal-subtitle').textContent = `${task.cidade} · ${task.uf} · ${task.motivos}`; el('interaction-form').reset(); el('form-error').textContent = ''; el('interaction-dialog').showModal(); }
 function closeDialog() { el('interaction-dialog').close(); currentTask = null; }
 
 el('start-work').onclick = beginWork;
 el('select-all-states').onclick = () => {
-  currentStates = currentStates.length === config.ufs.length ? [] : [...config.ufs];
-  el('start-work').disabled = currentStates.length === 0;
+  const grupos = Object.keys(config.grupos_uf);
+  currentGroups = currentGroups.length === grupos.length ? [] : grupos;
+  el('start-work').disabled = currentGroups.length === 0;
   renderStates();
 };
 el('change-consultant').onclick = () => { el('workspace').hidden = true; el('start').hidden = false; };

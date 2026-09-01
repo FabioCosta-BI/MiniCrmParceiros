@@ -1,6 +1,26 @@
 -- Executar uma unica vez no banco PostgreSQL definido pela TI.
 CREATE SCHEMA IF NOT EXISTS starlink_crm;
 
+CREATE TABLE IF NOT EXISTS starlink_crm.carteira_diaria (
+    id_tarefa              VARCHAR(120) PRIMARY KEY,
+    data_carteira          DATE NOT NULL,
+    bloco_uf               VARCHAR(80) NOT NULL,
+    uf                     CHAR(2) NOT NULL,
+    id_wfm_b2b             VARCHAR(80) NOT NULL,
+    parceiro               VARCHAR(250),
+    cidade                 VARCHAR(150),
+    cod_ibge               BIGINT,
+    telefone               VARCHAR(40),
+    vendas_starlink        INTEGER NOT NULL DEFAULT 0,
+    motivos                VARCHAR(300) NOT NULL,
+    prioridade             VARCHAR(30) NOT NULL,
+    detalhe_regra          TEXT,
+    criado_em              TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS ix_carteira_diaria_data_uf
+    ON starlink_crm.carteira_diaria (data_carteira, uf);
+
 CREATE TABLE IF NOT EXISTS starlink_crm.controle_contatos (
     id_wfm_b2b             VARCHAR(80) NOT NULL,
     competencia            DATE NOT NULL,
