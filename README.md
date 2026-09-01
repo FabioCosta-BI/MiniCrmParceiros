@@ -25,12 +25,7 @@ Ao registrar uma ligacao, o CRM grava a interacao na tabela
 `data/historico_ligacoes_backup.csv` e apenas uma copia local de seguranca.
 
 Na primeira inicializacao, o CRM cria essa tabela automaticamente. A conta de
-servico precisa ter permissao para criar e inserir dados no dataset. Para levar
-o historico antigo de `data/historico_ligacoes.csv` para a tabela, execute uma vez:
-
-```powershell
-py migrar_historico_csv_bigquery.py
-```
+servico precisa ter permissao para criar e inserir dados no dataset.
 
 No Power BI, use a tabela do BigQuery como fonte do historico de ligacoes.
 

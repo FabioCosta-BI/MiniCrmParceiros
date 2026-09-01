@@ -37,12 +37,6 @@ tiver permissao de criar tabela no dataset. Ela precisa, no minimo, das permisso
 de criar tabela e inserir/ler dados nessa tabela. O Power BI deve usar a tabela
 do BigQuery como fonte do historico de ligacoes.
 
-Para preservar o historico anterior, executar uma unica vez:
-
-```powershell
-py migrar_historico_csv_bigquery.py
-```
-
 ## Uso pelos consultores
 
 O consultor acessa a aplicação por um navegador, usando um endereço interno como:
