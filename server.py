@@ -161,7 +161,10 @@ class CRMHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/config":
-            self.send_json({"ufs": UFS_BRASIL})
+            self.send_json({
+                "ufs": UFS_BRASIL,
+                "data_carteira": carteira_file_atual().stem.removeprefix("carteira_"),
+            })
             return
         if parsed.path == "/api/carteira":
             ufs = {uf for uf in parse_qs(parsed.query).get("ufs", [""])[0].split(",") if uf}

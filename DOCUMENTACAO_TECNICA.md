@@ -38,8 +38,8 @@ Uma carteira já criada para a mesma data não é substituída pela rotina de ge
 
 Para cada UF, a seleção considera:
 
-- até 10 parceiros em cidade estratégica: cidades que acumulam 80% dos acessos
-  Starlink da UF, conforme a base ANATEL;
+- até 10 parceiros em cidade estratégica: parceiros cuja cidade compõe os
+  primeiros 80% acumulados de acessos Starlink da UF, conforme a base ANATEL;
 - até 3 campeões de vendas: parceiros dentro dos 80% acumulados de vendas
   Starlink/Vivensis da UF;
 - parceiros cuja cidade-sede faz aniversário na data, quando houver correspondência

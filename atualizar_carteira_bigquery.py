@@ -10,12 +10,14 @@ from __future__ import annotations
 import csv
 import os
 import argparse
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
 from google.cloud import bigquery
+
+from postgres_contatos import controles, elegivel, registrar_oferta
 
 
 BASE_DIR = Path(__file__).parent
@@ -155,7 +157,10 @@ def montar_carteira(parceiros: list[dict], cidades_estrategicas: set[int]) -> li
             if "Campeão de vendas" in motivos:
                 detalhes.append(f"Campeão de vendas: {item['vendas_starlink']} vendas Starlink no recorte atual.")
             if "Cidade estratégica" in motivos:
-                detalhes.append("Cidade estratégica: município dentro dos 80% de acessos Starlink da UF, segundo ANATEL.")
+                detalhes.append(
+                    "Parceiro em cidade estratégica: a cidade compõe os primeiros 80% acumulados "
+                    "de acessos Starlink da UF, conforme ANATEL."
+                )
             if "Aniversário da cidade" in motivos:
                 dados_aniversario = cidades_aniversariantes[int(item["cod_ibge"])]
                 detalhes.append(
@@ -185,20 +190,27 @@ def main() -> None:
         raise RuntimeError(f"Configuração BigQuery ausente: {', '.join(faltando)}")
     parceiros = buscar_parceiros()
     carteira = montar_carteira(parceiros, buscar_cidades_estrategicas())
+    hoje = date.today()
+    estado = controles([item["id_wfm_b2b"] for item in carteira], hoje)
+    disponiveis = [item for item in carteira if elegivel(estado.get(item["id_wfm_b2b"]), hoje)]
+    limite_campeoes = int(os.getenv("LIMITE_CAMPEOES_DIA", "3"))
+    limite_estrategicos = int(os.getenv("LIMITE_CIDADES_ESTRATEGICAS_DIA", "10"))
+    campeoes = sorted((item for item in disponiveis if "Campeão de vendas" in item["motivos"]), key=lambda item: int(item["vendas_starlink"]), reverse=True)[:limite_campeoes]
+    ja_selecionados = {item["id_wfm_b2b"] for item in campeoes}
+    estrategicos = sorted((item for item in disponiveis if "Cidade estratégica" in item["motivos"] and item["id_wfm_b2b"] not in ja_selecionados), key=lambda item: int(item["vendas_starlink"]), reverse=True)[:limite_estrategicos]
+    aniversariantes = [item for item in disponiveis if "Aniversário da cidade" in item["motivos"] and item["id_wfm_b2b"] not in ja_selecionados]
+    carteira = campeoes + estrategicos + aniversariantes
     if not carteira:
         raise RuntimeError("A consulta não retornou parceiros com telefone e vendas.")
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    destino = OUTPUT_DIR / f"carteira_{date.today().isoformat()}.csv"
-    if destino.exists() and not args.substituir:
-        raise FileExistsError(
-            f"A carteira de hoje já existe ({destino.name}). Para preservar os registros, "
-            "gere a próxima carteira em outro dia ou use --substituir antes de iniciar as ligações."
-        )
-    with destino.open("w", newline="", encoding="utf-8-sig") as arquivo:
-        writer = csv.DictWriter(arquivo, fieldnames=CAMPOS)
-        writer.writeheader()
-        writer.writerows(carteira)
-    print(f"OK: {len(carteira)} parceiros reais gravados em {destino.name}")
+    tabela_carteira = tabela(os.getenv("BQ_CARTEIRA_TABELA", "crm_carteira_diaria"))
+    client = bigquery.Client(project=os.environ["BQ_PROJECT_ID"])
+    client.query(f"DELETE FROM {tabela_carteira} WHERE data_carteira = @data", job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("data", "DATE", hoje)])).result()
+    linhas = [{**item, "criado_em": datetime.now().astimezone().isoformat()} for item in carteira]
+    erros = client.insert_rows_json(tabela_carteira, linhas, row_ids=[item["id_tarefa"] for item in linhas])
+    if erros:
+        raise RuntimeError(f"Falha ao gravar carteira no BigQuery: {erros}")
+    registrar_oferta(carteira, hoje)
+    print(f"OK: {len(carteira)} parceiros gravados em {tabela_carteira}")
 
 
 if __name__ == "__main__":

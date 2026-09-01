@@ -8,7 +8,14 @@ const escapeHtml = (text) => String(text || '').replace(/[&<>'"]/g, c => ({'&':'
 
 async function getConfig() {
   config = await fetch('/api/config').then(r => r.json());
+  el('portfolio-date').textContent = formatPortfolioDate(config.data_carteira);
   renderStates();
+}
+
+function formatPortfolioDate(value) {
+  const [year, month, day] = String(value || '').split('-');
+  const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+  return year && month && day ? `${day} ${months[Number(month) - 1]} ${year}` : 'Sem carteira';
 }
 
 function renderStates() {

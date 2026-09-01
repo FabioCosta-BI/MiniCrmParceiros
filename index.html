@@ -14,7 +14,7 @@
   <main class="shell">
     <header class="topbar">
       <div><p class="eyebrow">OPERAÇÃO STARLINK</p><h1>Carteira de parceiros</h1></div>
-      <div class="date"><span>Carteira do dia</span><strong>31 AGO 2026</strong></div>
+      <div class="date"><span>Carteira do dia</span><strong id="portfolio-date"></strong></div>
     </header>
     <section id="start" class="start-card">
       <div><p class="eyebrow">ANTES DE COMEÇAR</p><h2>Quais UFs você vai trabalhar?</h2><p>Selecione uma ou mais UFs para abrir a carteira correspondente.</p></div>
@@ -26,7 +26,7 @@
       <section class="table-card">
         <div class="table-heading"><div><h2>Para ligar hoje</h2><p>Registre o resultado após cada contato. O histórico fica salvo automaticamente.</p></div><span id="count-label"></span></div>
         <div class="filters" id="reason-filters"></div>
-        <details class="status-guide"><summary>Entenda os filtros da carteira</summary><div class="status-list"><div><strong>Todos</strong><span>Exibe todos os parceiros selecionados para contato no dia.</span></div><div><strong>Campeão de vendas</strong><span>Parceiros do grupo que concentra 80% das vendas; são priorizados até 3 contatos por dia.</span></div><div><strong>Cidade estratégica</strong><span>Parceiros em cidades que concentram 80% dos acessos Starlink da UF, segundo a base ANATEL; até 10 contatos por dia.</span></div><div><strong>Aniversário da cidade</strong><span>Parceiros cuja cidade-sede tem aniversário hoje, conforme a data histórica identificada no acervo do IBGE.</span></div></div></details>
+        <details class="status-guide"><summary>Entenda os filtros da carteira</summary><div class="status-list"><div><strong>Todos</strong><span>Exibe todos os parceiros selecionados para contato no dia.</span></div><div><strong>Campeão de vendas</strong><span>Parceiros do grupo que concentra 80% das vendas; são priorizados até 3 contatos por dia.</span></div><div><strong>Cidade estratégica</strong><span>Parceiros em cidades que compõem os primeiros 80% acumulados de acessos Starlink da UF, conforme a ANATEL; até 10 contatos por dia.</span></div><div><strong>Aniversário da cidade</strong><span>Parceiros cuja cidade-sede tem aniversário hoje, conforme a data histórica identificada no acervo do IBGE.</span></div></div></details>
         <div class="table-wrap"><table><thead><tr><th>Parceiro</th><th>ID WFM B2B</th><th>Telefone</th><th>Vendas</th><th>Motivo</th><th>Prioridade</th><th>Status</th><th></th></tr></thead><tbody id="tasks"></tbody></table></div>
       </section>
     </section>
